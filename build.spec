@@ -6,7 +6,7 @@ block_cipher = None
 
 a = Analysis(['jabiott.pyw'],
              pathex=['C:\\repos\\jabi-ott'],
-             binaries=[],
+             binaries=[('C:\\repos\\jabi-ott\\chromedriver.exe', '.')],
              datas=[],
              hiddenimports=[],
              hookspath=[],

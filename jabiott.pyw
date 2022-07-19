@@ -1,3 +1,5 @@
+appVersion = "0.99.14"
+# appVersion = "test"
 from win32api import GetMonitorInfo, MonitorFromPoint
 from enum import Enum
 
@@ -5,7 +7,6 @@ monitor_info = GetMonitorInfo(MonitorFromPoint((0,0)))
 monitor_area = monitor_info.get("Monitor")
 work_area = monitor_info.get("Work")
 
-import mariadb
 import random
 
 import psutil
@@ -15,7 +16,7 @@ from PIL import Image, ImageTk
 
 import tkinter as tk
 import tkinter.font
-from tkinter import BOTH, StringVar, ttk, messagebox
+from tkinter import BOTH, E, StringVar, ttk, messagebox
 
 from dialog_loading import LoadingDialog
 import threading
@@ -114,9 +115,8 @@ class JabiOTT(tk.Tk):
         tk.Tk.__init__(self, *args, **kwargs)
         
         width = 285
-        height = 315
+        height = 250
         self.isWaitingClick = True
-        self.conn = None
         self.driver = None
         self.loading = None
         self.currentUrl = ""
@@ -175,13 +175,14 @@ class JabiOTT(tk.Tk):
                 logBox.see(tk.END)
 
 
-        title=tk.Label(canvas,text='otTV', font=font, foreground="white", bg="#21242d")
+        title=tk.Label(canvas,text=f'otTV ({appVersion})', font=font, foreground="white", bg="#21242d")
         title.bind("<Double-Button-3>", openLogPopup)
 
-        title.grid(row=0, column=0, sticky=tk.W, padx=(20, 0), ipady=15)
-        
-        # expire=tk.Label(canvas,text='aaa', font=font, foreground="white", bg="#21242d")
-        # expire.grid(row=0, column=1, sticky=tk.W, ipady=15)
+        title.grid(row=0, column=0, sticky=tk.W, padx=(10, 0), ipady=15)
+
+        # font=tk.font.Font(size=7, weight="bold")
+        # version=tk.Label(canvas,text=appVersion, font=font, foreground="white", bg="#21242d")
+        # version.grid(row=0, column=1, sticky=tk.W, ipady=15)
 
         close_img = tk.PhotoImage(file=resource_path("images\ico_close.png"))
         close_btn = tk.Button(canvas, image=close_img, command=lambda: self.destroy(), highlightthickness = 0, bd = 0, bg="#21242d", cursor="hand2")
@@ -230,6 +231,12 @@ class JabiOTT(tk.Tk):
         # c_btn.grid(row=3, column=2, padx=5, pady=5)
 
 
+        res = requests.get('http://jabi.us:3333/flags?key=version').json()
+        vers = res['value']
+        if appVersion != vers:
+            os.startfile("updater.exe start")
+            return
+
         self.mainloop()
 
     def setIsWaitingClick(self, isWait):
@@ -248,6 +255,10 @@ class JabiOTT(tk.Tk):
         login.start()
 
     def startDisney(self):
+
+        # messagebox.showinfo("알림", f'디즈니플러스 서비스는 현재 유지보수 중입니다.')
+        # return
+    
         if self.isWaitingClick:
             self.isWaitingClick = False
             self.after(5000, lambda: self.setIsWaitingClick(True))
@@ -352,6 +363,18 @@ class JabiOTT(tk.Tk):
 
     def doLogin(self, platform):
         log("do Login", platform)
+
+        res = requests.get(f'http://jabi.us:3333/flags?key=onoff{platform}').json()
+        value = res['value']
+        
+        # if value != "on":
+        #     messagebox.showinfo("알림", f'{value}')
+            
+        #     if self.loading:
+        #         self.loading.cancel()
+        #         self.loading = None
+        #     return
+
         sleep(1)
         self.platform = platform
         limit = 4
@@ -360,11 +383,20 @@ class JabiOTT(tk.Tk):
         elif platform == "youtube":
             limit = 100
         accounts = db.collection(self.platform).where(u'currentStreaming', u'<', limit).order_by(u'currentStreaming').stream()
-        
+
         self.account = None
+        tempList = []
         for account in accounts:
-            self.account = account
-            break
+            print()
+            # print(account.contains("disable"))
+            if account.to_dict().get("disable") != True:
+                tempList.append(account)
+            # if ()
+            # self.account = account
+            # break
+        print(tempList)
+
+        self.account = random.choice(tempList)
             
 
         if self.account == None:
@@ -399,6 +431,20 @@ class JabiOTT(tk.Tk):
                 enter = self.driver.find_element(by=By.XPATH, value='//*[@id="appMountPoint"]/div/div[3]/div/div/div[1]/form/button')
                 enter.click()
 
+                sleep(1)
+                try:
+                    message = WebDriverWait(self.driver, 3).until(
+                        EC.presence_of_element_located((By.CLASS_NAME, 'ui-message-contents'))
+                    )
+                    
+                    self.updateMessage("다른 계정으로 전환 중")
+                    
+                    self.after(1000, self.startNetflix)
+                    # self.startNetflix()
+                    return
+                except Exception as e:
+                    print("ee")
+                print("pass")
                 self.state = State.SELECTPF
                 self.updateMessage()
                 r_profile = WebDriverWait(self.driver, 10).until(
@@ -579,17 +625,30 @@ class JabiOTT(tk.Tk):
                 enter.click()
 
                 sleep(2)
+                
+                try:
+                    captcha = WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((By.XPATH, '//*[@id="view_container"]/div/div/div[2]/div/div[1]/div/form/span/section/div/div/div[4]'))
+                    )
+                    messagebox.showinfo("알림", "로그인 2차 인증을 진행해주세요.")
+                    self.driver.maximize_window()
+                    self.driver.set_window_position(int((self.winfo_screenwidth() - self.chromeWidth) / 2), int((self.winfo_screenheight() - self.chromeHeight) / 2))
+
+                except Exception as e:
+                    log("except")
+                
                 self.state = State.WRITEPW
                 self.updateMessage()
-                r_password = WebDriverWait(self.driver, 10).until(
+
+                r_password = WebDriverWait(self.driver, 100).until(
                     EC.presence_of_element_located((By.NAME, 'password'))
                 )
                 r_password.send_keys(self.account.get("password"))
-
+                sleep(1)
                 enter = self.driver.find_element(by=By.XPATH, value='//*[@id="passwordNext"]/div/button')
                 enter.click()  
 
-            elif platform == "apple":            
+            elif platform == "apple":
                 self.runChrome("https://tv.apple.com/kr", True)
 
                 sleep(3)
@@ -692,23 +751,6 @@ class JabiOTT(tk.Tk):
         #             except:
         #                 pass
 
-        # Connect to MariaDB Platform
-        if not self.conn:
-            log("connect mariadb", self.conn)
-            try:
-                self.conn = mariadb.connect(
-                    user="jabiott",
-                    password="lB2]uMIasP",
-                    host="jabi.us",
-                    port=3307,
-                    database="jabiott"
-                )
-            except mariadb.Error as e:
-                log(f"Error connecting to MariaDB Platform: {e}")
-                sys.exit(1)
-
-            # Get Cursor
-            self.cur = self.conn.cursor()
 
         self.state = State.GETEXPIRE
         # self.updateMessage()
@@ -735,13 +777,11 @@ class JabiOTT(tk.Tk):
         self.chromeHeight = 800
 
         if proxy:
-            option = """--window-size={},{} --window-position={},{} --remote-debugging-port=9222 --user-data-dir="C:\chrometemp" --incognito --app={}\
-                --no-displaying-insecure-content \
-                --no-referrers \
-                --disable-zero-suggest \
-                --disable-sync  \
-                --proxy-server=211.244.20.41:3128 \
-                --cipher-suite-blacklist=0x0004,0x0005,0xc011,0xc007""".format(self.chromeWidth, self.chromeHeight, int((self.winfo_screenwidth() - self.chromeWidth) / 2), int((self.winfo_screenheight() - self.chromeHeight) / 2), path)
+            res = requests.get('http://jabi.us:3333/flags?key=proxyip').json()
+            proxyIP = res['value']
+            log("proxy server is {}".format(proxyIP))
+            option = """--window-size={},{} --window-position={},{} --remote-debugging-port=9222 --user-data-dir="C:\chrometemp" --app={}\
+                --proxy-server={} """.format(self.chromeWidth, self.chromeHeight, int((self.winfo_screenwidth() - self.chromeWidth) / 2), int((self.winfo_screenheight() - self.chromeHeight) / 2), path, proxyIP)
         else:
             option = """--window-size={},{} --window-position={},{} --remote-debugging-port=9222 --user-data-dir="C:\chrometemp" --incognito --app={}\
                 --no-displaying-insecure-content \
@@ -769,28 +809,20 @@ class JabiOTT(tk.Tk):
             log("aaaaaaaaaaaaaaaaaaaa")
         options = Options()
         options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
-
+        # options.add_extension("C:\\repos\\jabi-ott\\extentions\\adblock.crx")
 
         try:
-            # chrome_ver = chromedriver_autoinstaller.get_chrome_version().split('.')[0]
-            # driver_path = f'./{chrome_ver}/chromedriver.exe'
-            # if os.path.exists(driver_path):
-            #     print(f"chrom driver is insatlled: {driver_path}")
-            # else:
-            #     print(f"install the chrome driver(ver: {chrome_ver})")
             driver_path = chromedriver_autoinstaller.install(True)
         except:
             log("chrome_ver fail")
             log("install fail")
-            # log(chromedriver_autoinstaller.get_chrome_version())
-        
 
-        # Get driver and open url
-        # driver = webdriver.Chrome(driver_path)
-
-        log(f"start make chromedriver {driver_path}")
-        chrome_service = ChromeService(driver_path)
-        # chrome_service = ChromeService(resource_path('./chromedriver.exe'))
+        try:
+            log(f"start make chromedriver {driver_path}")
+            chrome_service = ChromeService(driver_path)
+        except:
+            chrome_service = ChromeService(resource_path('./chromedriver.exe'))
+        log(chrome_service.path)
         log("made chromedriver service")
         chrome_service.creationflags = CREATE_NO_WINDOW
 
@@ -833,29 +865,50 @@ class JabiOTT(tk.Tk):
         #     log('account', self.account.id)
         if self.account and self.currentUrl and self.lastAlive < datetime.now() - timedelta(seconds=30):
             try:
-                self.cur.execute("INSERT INTO online (ip,url,account,platform,latest) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE account = ?, platform = ?, url = ?, latest = ?", (self.ip, self.currentUrl, self.account.id, self.platform, datetime.now(), self.account.id, self.platform, self.currentUrl, datetime.now()))
-                self.conn.commit()
+                requests.post('http://jabi.us:3333/online', json={
+                    "ip": self.ip, 
+                    "account": self.account.id, 
+                    "platform": self.platform, 
+                    "url": self.currentUrl
+                    }, timeout=2)
                 log("inserted online")
-            except mariadb.Error as e: 
+            except Exception as e:
                 log(f"Error: {e}")
             self.lastAlive = datetime.now()
 
     def checkUrlChange(self):
         #insert information 
+        if self.currentUrl.startswith("https://www.netflix.com/YourAccount") or \
+            self.currentUrl.startswith("https://www.netflix.com/mfa") or \
+                self.currentUrl.startswith("https://www.netflix.com/password") or \
+        self.currentUrl.startswith("https://www.netflix.com/kr/loginhelp"):
+            self.driver.get("https://www.netflix.com/browse")
+        log("url '{}'".format(self.currentUrl))
+        log("bool {}".format(self.currentUrl == "https://www.netflix.com/kr/"))
+        if self.currentUrl == "https://www.netflix.com/kr/":
+            # messagebox.showinfo("알림", "동시접속 인원이 모두 찼습니다. 다른계정으로 로그인을 시도합니다.")
+            # self.attributes("-topmost", 1) 
+            self.startNetflix()
+
         try: 
-            self.cur.execute("INSERT INTO histories (ip,url,account,platform) VALUES (?, ?, ?, ?)", (self.ip, self.currentUrl, self.account.id, self.platform))
-            self.conn.commit()
+            requests.post('http://jabi.us:3333/histories', json={
+                "ip": self.ip, 
+                "account": self.account.id, 
+                "platform": self.platform, 
+                "url": self.currentUrl
+                }, timeout=2)
             log("inserted")
-        except mariadb.Error as e: 
+        except Exception as e:
             log(f"Error: {e}")
 
 if __name__ == '__main__':
     
-    process = filter(lambda p: p.name() in ["chromedriver.exe", "chrome.exe"], psutil.process_iter())
-    for i in process:
-        if i.pid != os.getpid():
-            log(f"kill pid : {str(i.pid)} name {i.name()}")
-            i.kill()
+    
+    # process = filter(lambda p: p.name() in ["chromedriver.exe", "chrome.exe"], psutil.process_iter())
+    # for i in process:
+    #     if i.pid != os.getpid():
+    #         log(f"kill pid : {str(i.pid)} name {i.name()}")
+    #         i.kill()
 
     app = JabiOTT()
         
